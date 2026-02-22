@@ -81,4 +81,107 @@ except Exception:
 # --- Session State ---
 if "gemini_file" not in st.session_state: st.session_state.gemini_file = None
 if "current_filename" not in st.session_state: st.session_state.current_filename = ""
-if "report_df" not
+if "report_df" not in st.session_state: st.session_state.report_df = None
+if "chat_history" not in st.session_state: st.session_state.chat_history = []
+
+# --- PROFESSIONAL PDF SIDEBAR 📑 ---
+with st.sidebar:
+    st.image("https://img.icons8.com/fluency/96/medical-doctor.png", width=80)
+    st.title("PDI Control Center")
+    st.info("Tier 1 Active: Gemini 3.1 Pro")
+    st.markdown("---")
+    
+    uploaded_file = st.file_uploader("Upload Technical PDF", type="pdf")
+    
+    if st.button("Clear App Data"):
+        st.session_state.gemini_file = None
+        st.session_state.report_df = None
+        st.session_state.chat_history = []
+        st.rerun()
+
+# --- File Processing ---
+if uploaded_file:
+    if st.session_state.current_filename != uploaded_file.name:
+        st.session_state.gemini_file = None
+        st.session_state.current_filename = uploaded_file.name
+        st.session_state.report_df = None
+
+    if st.session_state.gemini_file is None:
+        with st.spinner("Processing PDF for Field Use..."):
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+                temp_file.write(uploaded_file.getbuffer())
+                temp_path = temp_file.name
+            
+            gem_file = genai.upload_file(temp_path)
+            while gem_file.state.name == "PROCESSING":
+                time.sleep(2)
+                gem_file = genai.get_file(gem_file.name)
+            
+            st.session_state.gemini_file = gem_file
+            os.remove(temp_path)
+            st.sidebar.success("✅ Analysis Ready!")
+
+# --- MAIN DASHBOARD ---
+st.title("📑 Smart Inspection Dashboard")
+
+if st.session_state.gemini_file:
+    tab1, tab2 = st.tabs(["📊 Technical Analysis", "💬 Field Q&A"])
+
+    with tab1:
+        st.subheader("Master PDI Specification Table")
+        if st.button("Generate Full Analysis Report 🚀"):
+            model = genai.GenerativeModel("gemini-3.1-pro-preview")
+            
+            with st.spinner("Extracting Specs into Modern Table..."):
+                prompt = (
+                    "Analyze this document. Extract all technical specifications. "
+                    "Provide the output ONLY as raw CSV text with 4 columns: "
+                    "S.No., English (Spec), Hindi Meaning (Write in Roman English/Hinglish letters), Inspection Check. "
+                    "Do not use markdown blocks like ```csv. Just provide the raw text."
+                )
+                response = model.generate_content([st.session_state.gemini_file, prompt])
+                
+                try:
+                    # AI output ko clean karna
+                    csv_raw = response.text.replace('```csv', '').replace('```', '').strip()
+                    st.session_state.report_df = pd.read_csv(io.StringIO(csv_raw))
+                except Exception as e:
+                    st.error("Table banane mein thoda error aaya. Ek baar fir se click karein.")
+
+        if st.session_state.report_df is not None:
+            # Screen par Table Dikhana
+            st.dataframe(st.session_state.report_df, use_container_width=True)
+            
+            # --- PERFECT PDF DOWNLOAD BUTTON ---
+            st.markdown("### 📥 Save Report")
+            try:
+                pdf_data = create_pdf_table(st.session_state.report_df)
+                st.download_button(
+                    label="📄 Download Modern PDF Report",
+                    data=pdf_data,
+                    file_name=f"PDI_Report_{st.session_state.current_filename}.pdf",
+                    mime="application/pdf"
+                )
+            except Exception as e:
+                st.error(f"PDF Banane mein error: {e}")
+
+    with tab2:
+        st.subheader("💬 Smart Q&A Assistant")
+        for msg in st.session_state.chat_history:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+        
+        query = st.chat_input("Ask anything about the document...")
+        if query:
+            st.session_state.chat_history.append({"role": "user", "content": query})
+            with st.chat_message("user"):
+                st.markdown(query)
+            
+            with st.chat_message("assistant"):
+                with st.spinner("Searching..."):
+                    model = genai.GenerativeModel("gemini-3-flash-preview")
+                    response = model.generate_content([st.session_state.gemini_file, f"Answer in simple Hinglish: {query}"])
+                    st.markdown(response.text)
+                    st.session_state.chat_history.append({"role": "assistant", "content": response.text})
+else:
+    st.info("⬅️ PDI Manual ya Technical Specification PDF upload karke shuru karein.")
