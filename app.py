@@ -4,139 +4,144 @@ import tempfile
 import os
 import time
 
-# --- 4. DARK/LIGHT & MOBILE LAYOUT ---
+# --- 4. 🌙 DARK/LIGHT & MOBILE LAYOUT ---
 st.set_page_config(
-    page_title="Gemini 3.1 PDI Field Assistant",
+    page_title="Gemini PDI Field Assistant",
     layout="wide", 
-    initial_sidebar_state="expanded", 
+    initial_sidebar_state="auto", 
     page_icon="🔬"
 )
 
-# Custom CSS for Mobile Table Scrolling (Fixed the error here)
+# Sidebar aur Mobile Table ke liye custom CSS
 st.markdown("""
     <style>
-    .stTable { overflow-x: auto; }
-    [data-testid="stSidebar"] { min-width: 300px; max-width: 300px; }
-    /* Mobile optimization */
+    /* Mobile par table ko scrollable banane ke liye */
+    .stTable { overflow-x: auto !important; }
+    
+    /* Sidebar ki width set karne ke liye */
+    [data-testid="stSidebar"] { min-width: 280px; max-width: 320px; }
+    
+    /* Mobile padding adjustment */
     @media (max-width: 640px) {
         .main .block-container { padding: 1rem; }
+        .stButton>button { width: 100%; } /* Mobile par buttons full width */
     }
     </style>
-    """, unsafe_allow_html=True) # <-- Corrected from unsafe_content_type
+    """, unsafe_allow_html=True)
 
 # --- SECURE API CONFIGURATION ---
 try:
-    # Streamlit Cloud Secrets se key uthayega
+    # Streamlit Secrets se key uthayega (Hiding Process)
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
 except Exception:
     st.error("❌ API Key nahi mili! Settings > Secrets mein GEMINI_API_KEY set karein.")
     st.stop()
 
-# --- Session State ---
-if "gemini_files" not in st.session_state: st.session_state.gemini_files = []
+# --- Session State Management ---
+if "gemini_file" not in st.session_state: st.session_state.gemini_file = None
+if "current_filename" not in st.session_state: st.session_state.current_filename = ""
 if "chat_history" not in st.session_state: st.session_state.chat_history = []
 
 # --- 3. PROFESSIONAL PDF SIDEBAR 📑 ---
 with st.sidebar:
-    st.title("🔬 PDI Control Center")
-    st.info("Tier 1: Gemini 3.1 Pro Active")
+    st.image("https://img.icons8.com/fluency/96/medical-doctor.png", width=80)
+    st.title("PDI Control Center")
+    st.markdown("---")
     
-    # MULTIPLE PDF UPLOAD (Upto 100MB per file supported now)
-    uploaded_files = st.file_uploader(
-        "Upload Technical PDFs", 
-        type="pdf", 
-        accept_multiple_files=True
-    )
+    st.subheader("📁 Document Upload")
+    uploaded_file = st.file_uploader("Upload Technical PDF", type="pdf")
     
-    if st.button("Clear All Files"):
-        st.session_state.gemini_files = []
+    if uploaded_file:
+        st.success(f"Selected: {uploaded_file.name}")
+        
+    st.markdown("---")
+    st.info("💡 **Tip:** Mobile par voice typing use karke sawal puchein.")
+    
+    if st.button("Clear App Data"):
+        st.session_state.gemini_file = None
+        st.session_state.chat_history = []
         st.rerun()
 
 # --- File Processing Logic ---
-if uploaded_files:
-    for uploaded_file in uploaded_files:
-        # Check if file already uploaded
-        if not any(f['name'] == uploaded_file.name for f in st.session_state.gemini_files):
-            with st.spinner(f"Uploading {uploaded_file.name}..."):
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
-                    temp_file.write(uploaded_file.getbuffer())
-                    temp_path = temp_file.name
-                
-                try:
-                    gem_file = genai.upload_file(temp_path)
-                    # File Active hone ka wait karein
-                    while gem_file.state.name == "PROCESSING":
-                        time.sleep(2)
-                        gem_file = genai.get_file(gem_file.name)
-                    
-                    st.session_state.gemini_files.append({"name": uploaded_file.name, "file": gem_file})
-                    os.remove(temp_path)
-                except Exception as e:
-                    st.error(f"Error uploading {uploaded_file.name}: {e}")
+if uploaded_file:
+    # Nayi file check
+    if st.session_state.current_filename != uploaded_file.name:
+        st.session_state.gemini_file = None
+        st.session_state.current_filename = uploaded_file.name
+        st.session_state.chat_history = []
 
-# --- MAIN SCREEN ---
+    if st.session_state.gemini_file is None:
+        with st.spinner("Processing PDF for Field Use..."):
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+                temp_file.write(uploaded_file.getbuffer())
+                temp_path = temp_file.name
+            
+            try:
+                # Gemini 3.1 Pro (Tier 1) use kar rahe hain
+                gem_file = genai.upload_file(temp_path)
+                
+                # File Active hone ka wait (Critical for 404/NotFound errors)
+                while gem_file.state.name == "PROCESSING":
+                    time.sleep(2)
+                    gem_file = genai.get_file(gem_file.name)
+                
+                st.session_state.gemini_file = gem_file
+                os.remove(temp_path)
+                st.sidebar.success("✅ Analysis Ready!")
+            except Exception as e:
+                st.error(f"Upload Error: {e}")
+
+# --- MAIN DASHBOARD ---
 st.title("📑 Smart Inspection Dashboard")
 
-if st.session_state.gemini_files:
-    # Desktop par Tabs mobile par achhe dikhte hain
-    tabs = st.tabs(["📊 Analysis", "🆚 Comparison", "💬 Field Q&A"])
+if st.session_state.gemini_file:
+    # 5. ONE-CLICK PDI REPORT & Q&A Tabs
+    tab1, tab2 = st.tabs(["📊 Technical Analysis", "💬 Field Assistant (Q&A)"])
 
-    # TAB 1: MASTER PDI TABLE (Gemini 3.1 Pro)
-    with tabs[0]:
-        selected_file_name = st.selectbox("Select File", [f['name'] for f in st.session_state.gemini_files])
-        if st.button("Generate Master PDI Table 🚀"):
+    with tab1:
+        st.subheader("Master PDI Specification Table")
+        if st.button("Generate Full Analysis Report 🚀"):
             model = genai.GenerativeModel("gemini-3.1-pro-preview")
-            file_to_analyze = next(f['file'] for f in st.session_state.gemini_files if f['name'] == selected_file_name)
             
             with st.spinner("Extracting Specifications..."):
                 prompt = (
-                    "You are a Senior Biomedical Engineer. Create a Markdown table: "
-                    "1. S.No. 2. English (Spec) 3. Hindi Meaning 4. Inspection Check. "
+                    "You are a Senior Biomedical Engineer. Create a detailed Markdown table: "
+                    "1. S.No. (exact) 2. English (Spec) 3. Hindi Meaning 4. Inspection Check. "
                     "Output ONLY the table."
                 )
-                response = model.generate_content([file_to_analyze, prompt])
-                st.markdown("### 📋 Master Inspection Table")
-                st.markdown(response.text)
+                response = model.generate_content([st.session_state.gemini_file, prompt])
+                report_data = response.text
+                st.markdown(report_data)
                 
-                # 5. ONE-CLICK DOWNLOAD (CSV format)
+                # 5. ONE-CLICK DOWNLOAD (Email/Excel ready)
                 st.download_button(
-                    "📥 Download for Excel", 
-                    response.text, 
-                    file_name=f"PDI_{selected_file_name}.csv"
+                    label="📧 Download PDI Report (Excel/CSV)",
+                    data=report_data,
+                    file_name=f"PDI_Report_{st.session_state.current_filename}.csv",
+                    mime="text/csv"
                 )
 
-    # TAB 2: MULTIPLE PDF COMPARISON
-    with tabs[1]:
-        if len(st.session_state.gemini_files) > 1:
-            st.write(f"Comparing {len(st.session_state.gemini_files)} documents...")
-            if st.button("Start Comparison 🆚"):
-                model = genai.GenerativeModel("gemini-3.1-pro-preview")
-                with st.spinner("Analyzing differences..."):
-                    all_gem_files = [f['file'] for f in st.session_state.gemini_files]
-                    compare_prompt = "Compare these medical equipment documents in a detailed table. Highlight technical differences, warranty, and compliance. Answer in Hindi."
-                    response = model.generate_content([*all_gem_files, compare_prompt])
-                    st.markdown(response.text)
-        else:
-            st.warning("Comparison ke liye kam se kam 2 PDF upload karein.")
-
-    # TAB 3: SMART FIELD Q&A
-    with tabs[2]:
-        st.info("Field par sawal puchein (Mobile voice typing use kar sakte hain)")
+    with tab2:
+        st.subheader("💬 Smart Q&A Assistant")
+        # Chat history display
         for msg in st.session_state.chat_history:
-            with st.chat_message(msg["role"]): st.markdown(msg["content"])
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
         
-        query = st.chat_input("Machine ya report ke baare mein puchein...")
+        # Chat Input
+        query = st.chat_input("Ask anything about the document...")
         if query:
             st.session_state.chat_history.append({"role": "user", "content": query})
-            with st.chat_message("user"): st.markdown(query)
+            with st.chat_message("user"):
+                st.markdown(query)
             
             with st.chat_message("assistant"):
-                # Chat ke liye fast model
-                model = genai.GenerativeModel("gemini-3-flash-preview")
-                all_gem_files = [f['file'] for f in st.session_state.gemini_files]
-                response = model.generate_content([*all_gem_files, f"Answer in simple Hindi: {query}"])
-                st.markdown(response.text)
-                st.session_state.chat_history.append({"role": "assistant", "content": response.text})
+                with st.spinner("Searching..."):
+                    # Chat ke liye Flash model fast hai
+                    model = genai.GenerativeModel("gemini-3-flash-preview")
+                    response = model.generate_content([st.session_state.gemini_file, f"Answer in simple Hindi: {query}"])
+                    st.markdown(response.text)
+                    st.session_state.chat_history.append({"role": "assistant", "content": response.text})
 else:
-    st.info("⬅️ Left side se PDI report ya technical specification PDF upload karein.")
+    st.info("⬅️ PDI Manual ya Technical Specification PDF upload karke shuru karein.")
