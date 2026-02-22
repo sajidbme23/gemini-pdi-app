@@ -22,9 +22,9 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 🌟 MODERN PDF TABLE FUNCTION (With wider 4th column) ---
+# --- 🌟 MODERN PDF TABLE FUNCTION ---
 def create_pdf_table(df):
-    # Landscape orientation
+    # Landscape orientation taaki 4 columns aaram se fit hon
     pdf = FPDF(orientation="L") 
     pdf.add_page()
     
@@ -130,7 +130,7 @@ if st.session_state.gemini_file:
         if st.button("Generate Full Analysis Report 🚀"):
             model = genai.GenerativeModel("gemini-3.1-pro-preview")
             
-            with st.spinner("Extracting Specs into Detailed Guide Table..."):
+            with st.spinner("Extracting Specs into Detailed Hinglish Guide..."):
                 # --- YAHAN MAIN SMART PROMPT UPDATE KIYA GAYA HAI ---
                 prompt = (
                     "You are an Expert Senior Biomedical Engineer guiding a junior for a physical PDI. "
@@ -139,9 +139,10 @@ if st.session_state.gemini_file:
                     "1. S.No. "
                     "2. English (Spec) "
                     "3. Hindi Meaning (Write in easy Roman English/Hinglish) "
-                    "4. Practical Inspection Guide (This is the most important. Explain EXACTLY how to check this on the physical machine. "
-                    "Where is the part usually located? What does it look like? Is it a software setting or a physical hardware check? "
-                    "Give clear step-by-step practical instructions assuming the engineer is seeing this machine for the first time.) "
+                    "4. Practical Inspection Guide (Explain EXACTLY how to check this on the physical machine. "
+                    "Where is the part located? What does it look like? How to test it? "
+                    "CRITICAL INSTRUCTION: You MUST write this ENTIRE 4th column in EASY HINGLISH (Roman Hindi) ONLY. "
+                    "Do not use English sentences here. Example: 'Machine ke samne khade ho, top window ko haath se khol kar check karo ki wo smooth khul rahi hai ya nahi...'). "
                     "Do not use markdown blocks like ```csv. Just provide the raw text."
                 )
                 response = model.generate_content([st.session_state.gemini_file, prompt])
