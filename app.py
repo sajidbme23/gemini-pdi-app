@@ -87,7 +87,24 @@ if "chat_history" not in st.session_state: st.session_state.chat_history = []
 with st.sidebar:
     st.image("https://img.icons8.com/fluency/96/medical-doctor.png", width=80)
     st.title("PDI Control Center")
-    st.info("Tier 1 Active: Gemini 3.1 Pro")
+    
+    # --- AI MODEL SELECTION DROPDOWN ---
+    st.markdown("### ⚙️ AI Settings")
+    MODEL_MAPPING = {
+        "Gemini 3.1 Pro Preview (Best)": "gemini-3.1-pro-preview",
+        "Gemini 3.0 Flash Preview (Fast)": "gemini-3.0-flash-preview",
+        "Gemini 2.5 Pro (Stable)": "gemini-2.5-pro"
+    }
+    
+    selected_model_name = st.selectbox(
+        "Select Active Model:",
+        options=list(MODEL_MAPPING.keys()),
+        index=0 # Default to 3.1 Pro
+    )
+    
+    # Jo model select hua hai, uska API naam variable mein save karo
+    active_api_model = MODEL_MAPPING[selected_model_name]
+    st.info(f"Tier Active: **{active_api_model}**")
     st.markdown("---")
     
     uploaded_file = st.file_uploader("Upload Technical PDF (Max 100MB)", type="pdf")
@@ -129,10 +146,10 @@ if st.session_state.gemini_file:
     with tab1:
         st.subheader("Comprehensive PDI Specification Table")
         if st.button("Start Deep Scanning 🚀"):
-            model = genai.GenerativeModel("gemini-3.1-pro-preview")
+            # Yahan dropdown wala model use hoga
+            model = genai.GenerativeModel(active_api_model)
             
-            with st.spinner("Analyzing every page. Please wait for large files..."):
-                # Naya Prompt: AI ko instruction di hai ki poora document scan kare
+            with st.spinner(f"Analyzing with {selected_model_name}. Please wait..."):
                 prompt = (
                     "You are a Senior Biomedical Engineer. Thoroughly analyze the ENTIRE document. "
                     "Extract EVERY technical specification mentioned, no matter how small. "
@@ -180,7 +197,8 @@ if st.session_state.gemini_file:
             with st.chat_message("user"): st.markdown(query)
             
             with st.chat_message("assistant"):
-                model = genai.GenerativeModel("gemini-3-flash-preview")
+                # Chat mein bhi dropdown wala model use hoga
+                model = genai.GenerativeModel(active_api_model)
                 response = model.generate_content([st.session_state.gemini_file, f"Answer in simple Hinglish: {query}"])
                 st.markdown(response.text)
                 st.session_state.chat_history.append({"role": "assistant", "content": response.text})
